@@ -1,0 +1,589 @@
+---
+title: "Statistical analysis on AP-1 transcription factor"
+author: "Yuyang Yuan, Shuhan Sun, Mingyu Zhang, Frank Li"
+subtitle: "STA130 Poster Project"
+date: December 6, 2022
+output: 
+  beamer_presentation:
+    theme: "Pittsburgh"
+    colortheme: "orchid"
+    fonttheme: "structurebold"
+    slide_level: 2
+classoption: "aspectratio=169"
+fontsize: 11pt
+urlcolor: blue
+---
+
+
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+# echo=FALSE will stop the code chunk from appearing in the knit document
+# warning=FALSE and message=FALSE will stop R messages from appearing in the knit document
+library(tidyverse)
+library(corrplot)
+library(psych)
+Project_data <- read_csv("STA130_Course_Project.csv")
+glimpse(Project_data)
+```
+
+
+## Introduction
+
+Background information:\
+  - Cancer has long been a devastating disease that torturing thousand millions of people\
+  - Vast of experiments and clinical trials have been made around the cancer treatment\
+  - Researchers have found that melanoma cells are typically resistant to commonly used MAPK inhibitors\
+  - AP-1 transcription factor can cause melanoma cells to change their status\
+
+This projects aims to study the relationships between different AP-1 transcription factor and or other factors in different condition based the data provided.
+
+## Objectives
+### This project will answer the three following questions (x and t will be specified later):
+  1. Do protein levels in experimental condition x change over time t?\
+  2. At time t in experimental condition x, what is the relationship between different proteins?\
+  3. At time 24h in experimental condition drug_id == 1 & dose_id == 1 & Rep == 1m, which the AP-1 protein can predict the MITF protein?
+
+
+## Data Summary
+
+Raw data used in this project includes 26 variables in total, in which 22 of them are AP-1 transcription factors and 4 are phenotype proteins.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+head(Project_data)
+```
+- The specific variables and data selected to answer each question will be explained in details later.
+
+
+
+## Research question one: Intro to the question
+
+### Research Question one: Do protein levels of Ki_67 in experimental condition x change over time t?
+
+- Method: two samples hypothesis test for mean\
+- Why using two samples hypothesis?\
+- Aiming to find: whether the protein level for a certain protein changes in \ fixed condition x over two different time point
+- Condition x choose: Rep = 1 & drug_id = 1 & dose_id = 2
+- time t choose: Timepoint = "0.5 h" and Timepoint = "72 h"\
+
+## Research question one: Data visualization
+
+```{r,include=TRUE, echo=FALSE,fig.width=4, fig.height=1.5}
+Project_data_Q1 <- Project_data %>% 
+  filter((Timepoint == "0.5 h" | Timepoint == "72 h") & 
+           Rep == 1 & drug_id == 1 & dose_id == 2) %>%
+  select(Ki_67,Timepoint)
+proj_d1 <- Project_data_Q1 %>% filter(Timepoint == "0.5 h")
+proj_d1 %>% ggplot(aes(x=Ki_67)) + 
+  geom_histogram(bins=10, fill="gray", colour = "black") + labs(x="protein level for Ki_67 at Timepoint = 0.5 h")
+proj_d2 <- Project_data_Q1 %>% filter(Timepoint == "72 h")
+proj_d2 %>% ggplot(aes(x=Ki_67)) + 
+  geom_histogram(bins=10, fill="gray", colour = "black") + labs(x="protein level for Ki_67 at Timepoint = 72 h")
+
+```
+
+
+## Research question one: Statistical Method
+
+- Method: two samples hypothesis test for mean
+
+Hypothesis:
+$$H_0:\mu_{0.5 h} = \mu_{72 h}$$
+$$H_A: \mu_{0.5 h} \neq \mu_{72 h}$$
+
+- Where $\mu_{0.5 h}$ is mean of Ki_67 at Timepoint equals 0.5 hours and $\mu_{0.5 h}$ is mean of Ki_67 at Timepoint equals 72 hours.
+
+- `Ki_67` represents the protein level at certain condition and timepoint; `Timepoint` represents the time at which the protein level is measured.
+
+## Research question one: Statistical Method And Results
+
+- Step one: Calculation of test statistics
+```{r, echo=FALSE, message=FALSE, warning=FALSE,}
+test_stat <- Project_data_Q1 %>% group_by(Timepoint) %>%
+summarise(means = mean(Ki_67), .groups="drop") %>%
+summarise(value = diff(means))
+test_stat <- as.numeric(test_stat)
+test_stat
+```
+
+- Step two: Data simulation
+```{r, echo=FALSE, message=FALSE, warning=FALSE,}
+set.seed(999) # any number you like
+repetitions <- 1000;
+simulated_values <- rep(NA, repetitions)
+
+for(i in 1:repetitions){
+  simdata <- Project_data_Q1 %>% mutate(Timepoint= sample(Timepoint))
+  sim_value <- simdata %>% group_by(Timepoint) %>%
+    summarise(means = mean(Ki_67)) %>%
+  summarise(value = diff(means))
+  simulated_values[i] <- as.numeric(sim_value)
+}
+
+sim <- tibble(mean_diff = simulated_values)
+```
+
+
+- Step three: Calculation of the p-value
+```{r, echo=FALSE, message=FALSE, warning=FALSE,}
+num_more_extreme <- sim %>% filter(abs(mean_diff) >= abs(test_stat)) %>% 
+  summarise(n())
+p_value <- as.numeric(num_more_extreme / repetitions)
+print(p_value)
+```
+
+- The p-value shows the probability of obtaining test results at least as extreme as
+the result actually observed. In this case, for significance level alpha to be 0.05,
+since p-value < 0.05, we have enough evidence to reject the null hypothesis.
+- Conclusion: protein level of Ki_67 changes with time
+
+
+## Research question one: Further Examination
+
+- The conclusion that we made in the last page is only responsible for the specific
+condition and time period
+- We would like to perform some more comparison to strengthen our believe with it
+- We will include changes in: 
+  - doses  
+  - drug used
+  - repetitions
+- We would also like to include both change of protein level in both short term (0.5 hours
+to 2 hours) and long term (0.5 hours to 72 hours)
+
+## Research question one: Further Examination
+
+- Original Condition: Rep = 1 & drug_id = 1 (Drug = Vem) & dose_id = 2 (Doses = 0.1uM)
+  - Short term: test statistics: -0.01442442, p-value = 0.039
+```{r, include=FALSE, echo=TRUE, message=FALSE, warning=FALSE,}
+Project_data_Q1 <- Project_data %>% 
+  filter((Timepoint == "0.5 h" | Timepoint == "2 h") & 
+           Rep == 1 & drug_id == 1 & dose_id == 2) %>%
+  select(Ki_67,Timepoint)
+proj_d1 <- Project_data_Q1 %>% filter(Timepoint == "0.5 h")
+proj_d2 <- Project_data_Q1 %>% filter(Timepoint == "2 h")
+
+test_stat <- Project_data_Q1 %>% group_by(Timepoint) %>%
+summarise(means = mean(Ki_67), .groups="drop") %>%
+summarise(value = diff(means))
+test_stat <- as.numeric(test_stat)
+
+set.seed(999) # any number you like
+repetitions <- 1000;
+simulated_values <- rep(NA, repetitions)
+
+for(i in 1:repetitions){
+  simdata <- Project_data_Q1 %>% mutate(Timepoint= sample(Timepoint))
+  sim_value <- simdata %>% group_by(Timepoint) %>%
+    summarise(means = mean(Ki_67)) %>%
+  summarise(value = diff(means))
+  simulated_values[i] <- as.numeric(sim_value)
+}
+
+sim <- tibble(mean_diff = simulated_values)
+
+num_more_extreme <- sim %>% filter(abs(mean_diff) >= abs(test_stat)) %>% 
+  summarise(n())
+p_value <- as.numeric(num_more_extreme / repetitions)
+```
+  - Long term: test statistics:  -0.5309462, p-value = 0
+  
+- More repetitions: Rep = 2 & drug_id = 1 (Drug = Vem) & dose_id = 2 (Doses = 0.1uM)
+  - Short term: test statistics: -0.004843381, p-value = 0.487
+```{r, include=FALSE, echo=TRUE, message=FALSE, warning=FALSE,}
+Project_data_Q1 <- Project_data %>% 
+  filter((Timepoint == "0.5 h" | Timepoint == "2 h") & 
+           Rep == 2 & drug_id == 1 & dose_id == 2) %>%
+  select(Ki_67,Timepoint)
+proj_d1 <- Project_data_Q1 %>% filter(Timepoint == "0.5 h")
+proj_d2 <- Project_data_Q1 %>% filter(Timepoint == "2 h")
+
+test_stat <- Project_data_Q1 %>% group_by(Timepoint) %>%
+summarise(means = mean(Ki_67), .groups="drop") %>%
+summarise(value = diff(means))
+test_stat <- as.numeric(test_stat)
+test_stat
+
+set.seed(999) # any number you like
+repetitions <- 1000;
+simulated_values <- rep(NA, repetitions)
+
+for(i in 1:repetitions){
+  simdata <- Project_data_Q1 %>% mutate(Timepoint= sample(Timepoint))
+  sim_value <- simdata %>% group_by(Timepoint) %>%
+    summarise(means = mean(Ki_67)) %>%
+  summarise(value = diff(means))
+  simulated_values[i] <- as.numeric(sim_value)
+}
+
+sim <- tibble(mean_diff = simulated_values)
+
+num_more_extreme <- sim %>% filter(abs(mean_diff) >= abs(test_stat)) %>% 
+  summarise(n())
+p_value <- as.numeric(num_more_extreme / repetitions)
+p_value
+```
+  - Long term: test statistics:  -0.5346298, p-value = 0
+```{r, include=FALSE, echo=TRUE, message=FALSE, warning=FALSE,}
+Project_data_Q1 <- Project_data %>% 
+  filter((Timepoint == "0.5 h" | Timepoint == "72 h") & 
+           Rep == 2 & drug_id == 1 & dose_id == 2) %>%
+  select(Ki_67,Timepoint)
+proj_d1 <- Project_data_Q1 %>% filter(Timepoint == "0.5 h")
+proj_d2 <- Project_data_Q1 %>% filter(Timepoint == "72 h")
+
+test_stat <- Project_data_Q1 %>% group_by(Timepoint) %>%
+summarise(means = mean(Ki_67), .groups="drop") %>%
+summarise(value = diff(means))
+test_stat <- as.numeric(test_stat)
+test_stat
+
+set.seed(999) # any number you like
+repetitions <- 1000;
+simulated_values <- rep(NA, repetitions)
+
+for(i in 1:repetitions){
+  simdata <- Project_data_Q1 %>% mutate(Timepoint= sample(Timepoint))
+  sim_value <- simdata %>% group_by(Timepoint) %>%
+    summarise(means = mean(Ki_67)) %>%
+  summarise(value = diff(means))
+  simulated_values[i] <- as.numeric(sim_value)
+}
+
+sim <- tibble(mean_diff = simulated_values)
+
+num_more_extreme <- sim %>% filter(abs(mean_diff) >= abs(test_stat)) %>% 
+  summarise(n())
+p_value <- as.numeric(num_more_extreme / repetitions)
+p_value
+```
+
+- Two drugs: Rep = 1 & drug_id = 2 (Drug = Vem+Tram) & dose_id = 2 (Doses = 0.1uM)
+  - Short term: test statistics: -0.05653635, p-value = 0
+```{r, include=FALSE, echo=TRUE, message=FALSE, warning=FALSE,}
+Project_data_Q1 <- Project_data %>% 
+  filter((Timepoint == "0.5 h" | Timepoint == "2 h") & 
+           Rep == 1 & drug_id == 2 & dose_id == 2) %>%
+  select(Ki_67,Timepoint)
+proj_d1 <- Project_data_Q1 %>% filter(Timepoint == "0.5 h")
+proj_d2 <- Project_data_Q1 %>% filter(Timepoint == "2 h")
+
+test_stat <- Project_data_Q1 %>% group_by(Timepoint) %>%
+summarise(means = mean(Ki_67), .groups="drop") %>%
+summarise(value = diff(means))
+test_stat <- as.numeric(test_stat)
+test_stat
+
+set.seed(999) # any number you like
+repetitions <- 1000;
+simulated_values <- rep(NA, repetitions)
+
+for(i in 1:repetitions){
+  simdata <- Project_data_Q1 %>% mutate(Timepoint= sample(Timepoint))
+  sim_value <- simdata %>% group_by(Timepoint) %>%
+    summarise(means = mean(Ki_67)) %>%
+  summarise(value = diff(means))
+  simulated_values[i] <- as.numeric(sim_value)
+}
+
+sim <- tibble(mean_diff = simulated_values)
+
+num_more_extreme <- sim %>% filter(abs(mean_diff) >= abs(test_stat)) %>% 
+  summarise(n())
+p_value <- as.numeric(num_more_extreme / repetitions)
+p_value
+```
+  - Long term: test statistics:  -0.827778, p-value = 0
+```{r, include=FALSE, echo=TRUE, message=FALSE, warning=FALSE,}
+Project_data_Q1 <- Project_data %>% 
+  filter((Timepoint == "0.5 h" | Timepoint == "72 h") & 
+           Rep == 1 & drug_id == 2 & dose_id == 2) %>%
+  select(Ki_67,Timepoint)
+proj_d1 <- Project_data_Q1 %>% filter(Timepoint == "0.5 h")
+proj_d2 <- Project_data_Q1 %>% filter(Timepoint == "72 h")
+
+test_stat <- Project_data_Q1 %>% group_by(Timepoint) %>%
+summarise(means = mean(Ki_67), .groups="drop") %>%
+summarise(value = diff(means))
+test_stat <- as.numeric(test_stat)
+test_stat
+
+set.seed(999) # any number you like
+repetitions <- 1000;
+simulated_values <- rep(NA, repetitions)
+
+for(i in 1:repetitions){
+  simdata <- Project_data_Q1 %>% mutate(Timepoint= sample(Timepoint))
+  sim_value <- simdata %>% group_by(Timepoint) %>%
+    summarise(means = mean(Ki_67)) %>%
+  summarise(value = diff(means))
+  simulated_values[i] <- as.numeric(sim_value)
+}
+
+sim <- tibble(mean_diff = simulated_values)
+
+num_more_extreme <- sim %>% filter(abs(mean_diff) >= abs(test_stat)) %>% 
+  summarise(n())
+p_value <- as.numeric(num_more_extreme / repetitions)
+p_value
+```
+
+- Larger Dose: Rep = 1 & drug_id = 1 (Drug = Vem) & dose_id = 3 (Doses = 0.316uM)
+  - Short term: test statistics:  -0.02280144, p-value = 0.001
+```{r, include=FALSE, echo=TRUE, message=FALSE, warning=FALSE,}
+Project_data_Q1 <- Project_data %>% 
+  filter((Timepoint == "0.5 h" | Timepoint == "2 h") & 
+           Rep == 1 & drug_id == 1 & dose_id == 3) %>%
+  select(Ki_67,Timepoint)
+proj_d1 <- Project_data_Q1 %>% filter(Timepoint == "0.5 h")
+proj_d2 <- Project_data_Q1 %>% filter(Timepoint == "2 h")
+
+test_stat <- Project_data_Q1 %>% group_by(Timepoint) %>%
+summarise(means = mean(Ki_67), .groups="drop") %>%
+summarise(value = diff(means))
+test_stat <- as.numeric(test_stat)
+test_stat
+
+set.seed(999) # any number you like
+repetitions <- 1000;
+simulated_values <- rep(NA, repetitions)
+
+for(i in 1:repetitions){
+  simdata <- Project_data_Q1 %>% mutate(Timepoint= sample(Timepoint))
+  sim_value <- simdata %>% group_by(Timepoint) %>%
+    summarise(means = mean(Ki_67)) %>%
+  summarise(value = diff(means))
+  simulated_values[i] <- as.numeric(sim_value)
+}
+
+sim <- tibble(mean_diff = simulated_values)
+
+num_more_extreme <- sim %>% filter(abs(mean_diff) >= abs(test_stat)) %>% 
+  summarise(n())
+p_value <- as.numeric(num_more_extreme / repetitions)
+p_value
+```
+  - Long term: test statistics: -0.7973515, p-value = 0
+```{r, include=FALSE, echo=TRUE, message=FALSE, warning=FALSE,}
+Project_data_Q1 <- Project_data %>% 
+  filter((Timepoint == "0.5 h" | Timepoint == "72 h") & 
+           Rep == 1 & drug_id == 1 & dose_id == 3) %>%
+  select(Ki_67,Timepoint)
+proj_d1 <- Project_data_Q1 %>% filter(Timepoint == "0.5 h")
+proj_d2 <- Project_data_Q1 %>% filter(Timepoint == "72 h")
+
+test_stat <- Project_data_Q1 %>% group_by(Timepoint) %>%
+summarise(means = mean(Ki_67), .groups="drop") %>%
+summarise(value = diff(means))
+test_stat <- as.numeric(test_stat)
+test_stat
+
+set.seed(999) # any number you like
+repetitions <- 1000;
+simulated_values <- rep(NA, repetitions)
+
+for(i in 1:repetitions){
+  simdata <- Project_data_Q1 %>% mutate(Timepoint= sample(Timepoint))
+  sim_value <- simdata %>% group_by(Timepoint) %>%
+    summarise(means = mean(Ki_67)) %>%
+  summarise(value = diff(means))
+  simulated_values[i] <- as.numeric(sim_value)
+}
+
+sim <- tibble(mean_diff = simulated_values)
+
+num_more_extreme <- sim %>% filter(abs(mean_diff) >= abs(test_stat)) %>% 
+  summarise(n())
+p_value <- as.numeric(num_more_extreme / repetitions)
+p_value
+```
+
+
+
+## Reasearch question two: intro to the question
+
+### At time 15h in experimental condition drug_id == 1 & dose_id == 1 & Rep == 1,\ what is the relationship between different proteins?
+
+- Method: Correlation Estimation
+- The variable that has been chosen for this question are:
+  - 'Phospho_ATF1'
+  - 'ATF6'
+  - 'Fra1'
+  - 'NF_kappaB'
+- Compute the correlation estimation between the selected variables at the specific defined time and condition
+
+
+## Reasearch question two: Statistical Method
+
+*Mathematical representation of the method*
+$$
+r=\frac{\sum_{i=1}^n\left(x_i-\bar{x}\right)\left(y_i-\bar{y}\right)}{\sqrt{\sum_{i=1}^n\left(x_i-\bar{x}\right)^2 \sum_{i=1}^n\left(y_i-\bar{y}\right)^2}}
+$$
+- calculating the Pearson’s correlation\
+- For example, $x_i$ could be variable 'ATF6' and $y_i$ could be variable 'Fra1'
+
+## Reasearch question two: data visualization(p1)
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=2, fig.width=4}
+Project_data %>% 
+  ggplot(aes(x=Phospho_ATF1, y=ATF6)) +
+  geom_point()+
+  geom_smooth(method="lm", se=FALSE)
+```
+
+## Reasearch question two: data visualization(p2)
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=2, fig.width=4}
+
+Project_data %>% 
+  ggplot(aes(x=Phospho_ATF1, y=Fra1)) +
+  geom_point()+
+  geom_smooth(method="lm", se=FALSE)
+```
+
+## Reasearch question two: data visualization(p3)
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=2, fig.width=4}
+
+Project_data %>% 
+  ggplot(aes(x=Phospho_ATF1, y=NF_kappaB)) +
+  geom_point()+
+  geom_smooth(method="lm", se=FALSE)
+```
+
+## Reasearch question two: data visualization(p4)
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=2, fig.width=4}
+
+Project_data %>% 
+  ggplot(aes(x=ATF6, y=Fra1)) +
+  geom_point()+
+  geom_smooth(method="lm", se=FALSE)
+
+```
+
+## Reasearch question two: data visualization(p5)
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=2, fig.width=4}
+
+Project_data %>% 
+  ggplot(aes(x=ATF6, y=NF_kappaB)) +
+  geom_point()+
+  geom_smooth(method="lm", se=FALSE)
+
+```
+
+## Reasearch question two: data visualization(p6)
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=2, fig.width=4}
+
+Project_data %>% 
+  ggplot(aes(x=Fra1, y=NF_kappaB)) +
+  geom_point()+
+  geom_smooth(method="lm", se=FALSE)
+
+```
+
+
+
+## Reasearch question two: Result
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=2, fig.width=4, fig.align='center'}
+Project_data_Q3 <- Project_data %>% 
+  filter(timepoint_id == 5 & 
+           drug_id == 1 & 
+           dose_id == 1) #or use Timepoint & Drugs & Doses
+
+ATF6_Fra1 <- cor(Project_data_Q3$ATF6, Project_data_Q3$Fra1)
+ATF6_NF_kappaB <- cor(Project_data_Q3$ATF6, Project_data_Q3$NF_kappaB)
+ATF6_Phospho_ATF1 <- cor(Project_data_Q3$ATF6, Project_data_Q3$Phospho_ATF1)
+Fra1_NF_kappaB <- cor(Project_data_Q3$Fra1, Project_data_Q3$NF_kappaB)
+Fra1_Phospho_ATF1 <- cor(Project_data_Q3$Fra1, Project_data_Q3$Phospho_ATF1)
+NF_kappaB_Phospho_ATF1 <- cor(Project_data_Q3$NF_kappaB, Project_data_Q3$Phospho_ATF1)
+library(knitr)
+r <- tibble(ATF6_Fra1, ATF6_NF_kappaB)
+kable(r)
+h <- tibble( ATF6_Phospho_ATF1, Fra1_NF_kappaB )
+kable(h)
+w <- tibble(Fra1_Phospho_ATF1, NF_kappaB_Phospho_ATF1)
+kable(w)
+```
+
+## Reasearch question two: Result
+- Six pair of correlation: 
+  1. ATF6 and Fra1: Positive weak
+  2. ATF6 and NF_kappaB: Positive strong
+  3. ATF6 and Phospho_ATF1: Positive median
+  4. Fra1 and NF_kappaB: Positive weak
+  5. Fra1 and Phospho_ATF1: Positive median
+  6. NF and kappaB_Phospho_ATF1: Positive median
+- All positive, but with different strength
+- Suggesting correlation but not causation
+
+
+
+## Reasearch question three: intro to the question
+
+### At time 24h in experimental condition drug_id == 1 & dose_id == 1 & Rep == 1, Which AP-1 protein can predict the MITF protein?
+
+- Method: Simple linear regression\
+- The variable that has been chosen for this question are\
+  - ALL 'AP-1 protein'\
+  - 'MITF protein'\
+- Analysis the relationship between the selected x variables(AP-1 protein) and y variable(MITF protein) at the specific defined time and condition.
+
+
+## Reasearch question three: Statistical Method
+$$y_i = \beta_0 + \beta_1  x_i+ \epsilon_i$$
+- $y_i$ : MITF protein\
+- $x_i$ : AP-1 protein\
+- $beta_0$ : intercept\
+- $beta_1$ : slope\
+- $\epsilon$ : random error term\
+
+
+## Reasearch question three: Data analysis
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=2, fig.width=4, fig.align='center'}
+lr_model <- Project_data %>% filter(drug_id == 1 & dose_id == 1 & Rep == 1 & Timepoint == '24 h')
+lr_model <- subset(lr_model, select = -c(...1,NGFR,AXL,Sox10))
+set.seed(1399)
+n <- nrow(lr_model)
+training_indices <- sample(1:n, size = round(0.8*n))
+lr_model <- lr_model %>% rowid_to_column()
+train <- lr_model %>% filter(rowid %in% training_indices)
+test <- lr_model %>% filter(!rowid %in% training_indices)
+y_train <- train$MiTFg
+y_test <- test$MiTFg
+fitted_model <- lm(MiTFg ~ Phospho_c_Fos + Phospho_Fra1 + c_Fos + c_Jun + Fra1 +JunD + ATF2 + JunB + Fra2 + ATF4 + Phospho_Erk1 + Phospho_ATF1 + ATF6 + Phospho_S6 + ATF3 + ATF5 + Phospho_p38 + Ki_67 + Phospho_ATF2 + Phospho_ATF4 + Phospho_c_Jun + NF_kappaB, data = train)
+summary(fitted_model)
+```
+
+
+## Reasearch question three: Data analysis
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=2, fig.width=4, fig.align='center'}
+fitted_model_updated <- lm(MiTFg ~ Phospho_c_Fos + Phospho_Fra1 + c_Fos + c_Jun + Fra1 + JunD + JunB + Fra2 + ATF4 + Phospho_Erk1 + Phospho_ATF1 + ATF6 + Phospho_S6 + Phospho_p38 + Ki_67 + NF_kappaB, data = train)
+summary(fitted_model_updated)
+```
+
+
+## Reasearch question three: Result
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=2, fig.width=4, fig.align='center'}
+model_test <- predict(fitted_model_updated, newdata = test)
+test_RMSE <- sqrt(mean((y_test - model_test)^2))
+model_train <- predict(fitted_model_updated, newdata = train)
+train_RMSE <- sqrt(mean((y_train - model_train)^2))
+c(test_RMSE, train_RMSE)
+```
+- Meaning of the result, root mean square are similar between train and test group. So the AP-1 protein list in the "fitted_model_updated" can do a good predict to the MITF protein.
+
+
+## Overall Conclusion
+
+- Q1: Protein level of Ki_67 changes with time in most cases\
+    - Example: When Rep == 1, drug_id = 1, dose_id = 2, with time from 0.5hours to 72 hours, test statistics = -0.5309462, p-value = 0\
+    - Reject Null hypothesis in this case\
+
+- Q2: The correlation between the four variables (6 paires) at the specified condition are all positive but with different strength.
+    - ATF6 and Fra1: Positive weak, ATF6 and NF_kappaB: Positive strong, ATF6 and Phospho_ATF1: Positive median\
+    - Fra1 and NF_kappaB: Positive weak, Fra1 and Phospho_ATF1: Positive median, NF and kappaB_Phospho_ATF1: Positive median\
+
+- Q3: Root mean square are similar between train and test group. So the AP-1 protein list in the "fitted_model_updated" can do a good predict to the MITF protein.
+
+
+
+## References
+
+101, R Programming. R programming in one hour - a crash course for beginners. 27 April 2022. 7 December 2022.
+
+
